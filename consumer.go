@@ -27,6 +27,7 @@ import (
 // When the returned value is non-nil Consumer will automatically handle REQueing.
 type Handler interface {
 	HandleMessage(message *Message) error
+	ShouldStop()<-chan bool
 }
 
 // HandlerFunc is a convenience type to avoid having to declare a struct
@@ -292,6 +293,10 @@ func (r *Consumer) ChangeMaxInFlight(maxInFlight int) {
 	for _, c := range r.conns() {
 		r.maybeUpdateRDY(c)
 	}
+}
+
+func (r *Consumer) GetMaxInFlight() int {
+	return int(atomic.LoadInt32(&r.maxInFlight))
 }
 
 // ConnectToNSQLookupd adds an nsqlookupd address to the list for this Consumer instance.
@@ -1081,27 +1086,31 @@ func (r *Consumer) handlerLoop(handler Handler) {
 	r.log(LogLevelDebug, "starting Handler")
 
 	for {
-		message, ok := <-r.incomingMessages
-		if !ok {
-			goto exit
-		}
+		select{
+			case message, ok := <-r.incomingMessages:
+				if !ok {
+					goto exit
+				}
 
-		if r.shouldFailMessage(message, handler) {
-			message.Finish()
-			continue
-		}
+				if r.shouldFailMessage(message, handler) {
+					message.Finish()
+					continue
+				}
 
-		err := handler.HandleMessage(message)
-		if err != nil {
-			r.log(LogLevelError, "Handler returned error (%s) for msg %s", err, message.ID)
-			if !message.IsAutoResponseDisabled() {
-				message.Requeue(-1)
-			}
-			continue
-		}
+				err := handler.HandleMessage(message)
+				if err != nil {
+					r.log(LogLevelError, "Handler returned error (%s) for msg %s", err, message.ID)
+					if !message.IsAutoResponseDisabled() {
+						message.Requeue(-1)
+					}
+					continue
+				}
 
-		if !message.IsAutoResponseDisabled() {
-			message.Finish()
+				if !message.IsAutoResponseDisabled() {
+					message.Finish()
+				}
+			case <-handler.ShouldStop():
+				goto exit
 		}
 	}
 
