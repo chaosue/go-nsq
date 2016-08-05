@@ -278,7 +278,7 @@ func (r *Consumer) GetMaxInFlight() int32 {
 	return atomic.LoadInt32(&r.maxInFlight)
 }
 
-// ChangeMaxInFlight sets a new maximum number of messages this comsumer instance
+// ChangeMaxInFlight sets a new maximum number of messages this consumer instance
 // will allow in-flight, and updates all existing connections as appropriate.
 //
 // For example, ChangeMaxInFlight(0) would pause message flow
@@ -901,7 +901,6 @@ func (r *Consumer) updateRDY(c *Conn, count int64) error {
 	if c.IsClosing() {
 		return ErrClosing
 	}
-
 	// never exceed the nsqd's configured max RDY count
 	if count > c.MaxRDY() {
 		count = c.MaxRDY()
@@ -1035,15 +1034,24 @@ func (r *Consumer) Stop() {
 			}
 		}
 
-		time.AfterFunc(time.Second*30, func() {
-			// if we've waited this long handlers are blocked on processing messages
-			// so we can't just stopHandlers (if any adtl. messages were pending processing
-			// we would cause a panic on channel close)
-			//
-			// instead, we just bypass handler closing and skip to the final exit
-			r.exit()
-		})
+		// Waiting for all messages to be processed.
+		waitTicker := time.NewTicker(time.Millisecond * 90)
+		waitTimeout := time.After(time.Second * 180)
+		waitLoop:
+		for{
+			select {
+				case	<-waitTicker.C:
+					if atomic.LoadInt32(&r.runningHandlers) == 0 {
+						waitTicker.Stop()
+						break waitLoop
+					}
+				case	<-waitTimeout:
+					r.log(LogLevelWarning, "Consumer exited before message being handled!")
+					break waitLoop
+			}
+		}
 	}
+	r.exit()
 }
 
 func (r *Consumer) stopHandlers() {
@@ -1066,8 +1074,6 @@ func (r *Consumer) AddHandler(handler Handler) {
 // AddConcurrentHandlers sets the Handler for messages received by this Consumer.  It
 // takes a second argument which indicates the number of goroutines to spawn for
 // message handling.
-//
-// This panics if called after connecting to NSQD or NSQ Lookupd
 //
 // (see Handler or HandlerFunc for details on implementing this interface)
 func (r *Consumer) AddConcurrentHandlers(handler Handler, concurrency int) {
@@ -1103,14 +1109,11 @@ func (r *Consumer) handlerLoop(handler Handler) {
 				if !message.IsAutoResponseDisabled() {
 					message.Finish()
 				}
-			// Just stop the current handler, do not close the consumer.
-		    // In this case, it should take care of the maxInFlight to prevent over burst incoming messages.
 			case <- handler.ShouldStop():
-				r.log(LogLevelDebug, "stopping Handler")
-				atomic.AddInt32(&r.runningHandlers, -1)
+				goto exit
 		}
-
 	}
+
 exit:
 	r.log(LogLevelDebug, "stopping Handler")
 	if atomic.AddInt32(&r.runningHandlers, -1) == 0 {
