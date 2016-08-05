@@ -195,6 +195,10 @@ func (w *Producer) MultiPublish(topic string, body [][]byte) error {
 	return w.sendCommand(cmd)
 }
 
+func (w *Producer) DeferredPublish(topic string, delay time.Duration, body []byte) error {
+	return w.sendCommand(DeferredPublish(topic, delay, body))
+}
+
 func (w *Producer) sendCommand(cmd *Command) error {
 	doneChan := make(chan *ProducerTransaction)
 	err := w.sendCommandAsync(cmd, doneChan, nil)
