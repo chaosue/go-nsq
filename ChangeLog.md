@@ -1,5 +1,22 @@
 ## go-nsq Change Log
 
+### 1.0.6 - 2016-06-04
+
+**Upgrading from 1.0.5**: There are no backward incompatible changes.
+
+ * #175 - consumer: reduce garbage generation in DecodeMessage (thanks @Dieterbe)
+ * #162 - producer: support `DeferredPublish` (thanks @DanielHeckrath)
+
+### 1.0.5 - 2015-09-19
+
+**Upgrading from 1.0.4**: There are no backward incompatible changes.
+
+ * #156 - consumer: prevent data race on RNG
+ * #155 - config: support `flag.Value` interface
+ * #147/#150 - consumer: fix application of `max_backoff_duration` (thanks @judwhite)
+ * #138 - fix lint, vet, fmt issues
+ * #137 - remove `go-simplejson` dependency
+
 ### 1.0.4 - 2015-04-07
 
 **Upgrading from 1.0.3**: There are no backward incompatible changes.
@@ -47,7 +64,7 @@ release no longer compiles with Go `1.0.x`.
  * #91 - add consumer `DisconnectFrom*`
  * #87 - allow `heartbeat_interval` and `output_buffer_timeout` to be disabled
  * #86 - pluggable `nsqlookupd` behaviors
- * #83 - send `RDY` before `FIN`/`REQ` (forwards compatibility with bitly/nsq#404)
+ * #83 - send `RDY` before `FIN`/`REQ` (forwards compatibility with nsqio/nsq#404)
  * #82 - fix panic when conn isn't assigned
  * #75/#76 - minor config related bug fixes
  * #75/#77/#78 - add `tls-cert` and `tls-key` config options

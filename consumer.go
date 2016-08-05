@@ -107,7 +107,8 @@ type Consumer struct {
 	channel string
 	config  Config
 
-	rng *rand.Rand
+	rngMtx sync.Mutex
+	rng    *rand.Rand
 
 	needRDYRedistributed int32
 
@@ -366,8 +367,10 @@ func validatedLookupAddr(addr string) error {
 func (r *Consumer) lookupdLoop() {
 	// add some jitter so that multiple consumers discovering the same topic,
 	// when restarted at the same time, dont all connect at once.
+	r.rngMtx.Lock()
 	jitter := time.Duration(int64(r.rng.Float64() *
 		r.config.LookupdPollJitter * float64(r.config.LookupdPollInterval)))
+	r.rngMtx.Unlock()
 	var ticker *time.Ticker
 
 	select {
@@ -823,7 +826,9 @@ func (r *Consumer) resume() {
 		r.backoff(time.Second)
 		return
 	}
+	r.rngMtx.Lock()
 	idx := r.rng.Intn(len(conns))
+	r.rngMtx.Unlock()
 	choice := conns[idx]
 
 	r.log(LogLevelWarning,
@@ -999,7 +1004,9 @@ func (r *Consumer) redistributeRDY() {
 
 	for len(possibleConns) > 0 && availableMaxInFlight > 0 {
 		availableMaxInFlight--
+		r.rngMtx.Lock()
 		i := r.rng.Int() % len(possibleConns)
+		r.rngMtx.Unlock()
 		c := possibleConns[i]
 		// delete
 		possibleConns = append(possibleConns[:i], possibleConns[i+1:]...)
